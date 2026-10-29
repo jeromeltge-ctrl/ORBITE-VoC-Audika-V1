@@ -1,9 +1,11 @@
 import sys,os,json,sqlite3,csv,traceback
-# JSON IPC uses UTF-8 regardless of the Windows console code page.
-for stream in (sys.stdout,sys.stderr):
+# Electron writes UTF-8 JSON to stdin. Windows CP1252 must not decode it.
+for stream in (sys.stdin,sys.stdout,sys.stderr):
  try:
-  if hasattr(stream,'reconfigure'):stream.reconfigure(encoding='utf-8',errors='backslashreplace')
- except (OSError,ValueError,AttributeError):pass
+  if hasattr(stream,'reconfigure'):
+   stream.reconfigure(encoding='utf-8',errors='strict')
+ except (AttributeError,OSError,ValueError):
+  pass
 from pathlib import Path
 os.environ.setdefault('ORBITE_DATA_DIR',str(Path.home()/'.orbite-voc'))
 import orbite_data as d
@@ -88,7 +90,8 @@ def run(method,p):
 
 if __name__=='__main__':
  for line in sys.stdin:
+  req=None
   try:
    req=json.loads(line);data=run(req['method'],req.get('params') or {});response={'id':req.get('id'),'data':data}
-  except Exception as e:response={'id':req.get('id') if 'req' in locals() else None,'error':str(e)}
+  except Exception as e:response={'id':req.get('id') if isinstance(req,dict) else None,'error':str(e)}
   sys.stdout.write(json.dumps(response,ensure_ascii=False,default=str)+'\n');sys.stdout.flush()
