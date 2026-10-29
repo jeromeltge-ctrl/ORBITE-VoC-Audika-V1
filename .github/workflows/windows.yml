@@ -1,0 +1,31 @@
+name: ORBITE VoC Windows Electron
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Run historical engine tests
+        working-directory: backend
+        run: python -m unittest discover -p 'test_*.py' -v
+      - name: Compile Python sidecar
+        run: python -m PyInstaller --noconfirm --clean --onefile --name orbite_backend --paths backend --distpath backend/dist --hidden-import openpyxl --hidden-import nps_analytics --hidden-import question_analytics --hidden-import survey_library backend/orbite_backend.py
+      - name: Verify compiled backend contracts
+        run: python backend/smoke_sidecar.py backend/dist/orbite_backend.exe
+      - name: Install UI dependencies
+        run: npm install
+      - name: Build portable Windows EXE
+        run: npm run dist:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ORBITE-VoC-Desktop-Windows
+          path: release/*.exe
