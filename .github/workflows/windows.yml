@@ -18,7 +18,7 @@ jobs:
         working-directory: backend
         run: python -m unittest discover -p 'test_*.py' -v
       - name: Compile Python sidecar
-        run: python -m PyInstaller --noconfirm --clean --onefile --name orbite_backend --paths backend --distpath backend/dist --hidden-import openpyxl --hidden-import nps_analytics --hidden-import question_analytics --hidden-import survey_library --hidden-import engine --hidden-import interactive_export --hidden-import ereputation_bridge backend/orbite_backend.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --name orbite_backend --paths backend --distpath backend/dist --hidden-import openpyxl --hidden-import nps_analytics --hidden-import question_analytics --hidden-import survey_library --hidden-import ereputation_bridge --hidden-import engine --hidden-import interactive_export backend/orbite_backend.py
       - name: Verify compiled backend contracts
         run: python backend/smoke_sidecar.py backend/dist/orbite_backend.exe
       - name: Install UI dependencies
