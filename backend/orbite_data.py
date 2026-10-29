@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from openpyxl import load_workbook
 from survey_library import connect as survey_connect
+import import_deletion
 BASE=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'ORBITEVoC';BASE.mkdir(parents=True,exist_ok=True)
 DB=BASE/'orbite.sqlite'
 def db():
@@ -11,6 +12,7 @@ def db():
  CREATE TABLE IF NOT EXISTS nps(member_id TEXT PRIMARY KEY,campaign TEXT,appt_type TEXT,clinic TEXT,region TEXT,score INTEGER,comment TEXT,rating_date TEXT,send_date TEXT,answers TEXT,raw_source TEXT);
  CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT,filename TEXT,at TEXT,added INTEGER,skipped INTEGER);
  CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);''')
+ import_deletion.ensure(c)
  return c
 
 def import_reference(path):
@@ -31,7 +33,10 @@ def import_nps(path):
  w=load_workbook(path,read_only=True,data_only=True);it=w.active.iter_rows(values_only=True);head=[str(x or '') for x in next(it)];needed=['CampaignMemberId','Rating','CampaignName','custom_clinic_id'];missing=[x for x in needed if x not in head]
  if missing:raise ValueError('Colonnes manquantes : '+', '.join(missing))
  c=db();valid={x[0] for x in c.execute('SELECT code FROM centres')};added=skipped=unmapped=0
+ import_deletion.ensure(c)
  with c:
+  new_import=c.execute('INSERT INTO imports(kind,filename,at,added,skipped) VALUES(?,?,?,?,?)',('nps',Path(path).name,datetime.now().isoformat(),0,0)).lastrowid
+  c.execute('INSERT INTO tracked_nps_imports(import_id) VALUES(?)',(new_import,))
   for row in it:
    d=dict(zip(head,row));mid=d.get('CampaignMemberId')
    if mid is None:continue
@@ -45,10 +50,10 @@ def import_nps(path):
     except (ValueError,TypeError):skipped+=1;continue
    def iso(x):return x.isoformat() if hasattr(x,'isoformat') else str(x or '')
    vals=(str(mid),str(d.get('CampaignName') or ''),str(d.get('custom_appointment_type') or ''),clinic,str(d.get('custom_region_name') or ''),score,str(d.get('UserComment') or ''),iso(d.get('RatingTime')),iso(d.get('SurveySendTime')),json.dumps([d.get('Answer'+str(i)) for i in range(1,6)],ensure_ascii=False,default=str),Path(path).name)
-   cur=c.execute('INSERT OR IGNORE INTO nps VALUES(?,?,?,?,?,?,?,?,?,?,?)',vals)
+   cur=c.execute('INSERT OR IGNORE INTO nps(member_id,campaign,appt_type,clinic,region,score,comment,rating_date,send_date,answers,raw_source,import_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(*vals,new_import))
    if cur.rowcount:added+=1
    else:skipped+=1
-  c.execute('INSERT INTO imports(kind,filename,at,added,skipped) VALUES(?,?,?,?,?)',('nps',Path(path).name,datetime.now().isoformat(),added,skipped+unmapped))
+  c.execute('UPDATE imports SET added=?,skipped=? WHERE id=?',(added,skipped+unmapped,new_import))
  c.close();w.close();return {'added':added,'ignored':skipped,'outside_reference':unmapped}
 
 def filtered(c,region='',sector='',campaign='',start='',end=''):
