@@ -1,0 +1,1 @@
+declare global {interface Window {orbite:{call:(name:string,params?:Record<string,unknown>)=>Promise<any>;pick:(save:boolean,filters?:{name:string;extensions:string[]}[])=>Promise<string|null>}}}export {};
