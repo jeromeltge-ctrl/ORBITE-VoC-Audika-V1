@@ -11,7 +11,12 @@ from openpyxl import load_workbook
 from openpyxl.workbook.properties import CalcProperties
 from engine import Analysis, yearback
 from google_view import period_for, stats
-from interactive_export import build as historical_build
+
+
+def historical_build(*args, **kwargs):
+    # Load the workbook-specific implementation only for an actual Excel export.
+    from interactive_export import build as original
+    return original(*args, **kwargs)
 
 
 def build(con,template,out,start,end,region='Toutes',sector='Tous'):
@@ -88,7 +93,7 @@ def build(con,template,out,start,end,region='Toutes',sector='Tous'):
                         append('SECTEUR',r,s,'',[c for c in subset if a.centers[c][3]==s])
                 for code in codes:append('CENTRE',a.centers[code][2],a.centers[code][3],code,[code])
                 audit.append(['Les volumes connus peuvent être incomplets ; les colonnes de couverture distinguent les absences des zéros.'])
-                audit.freeze_panes='A10'
+                audit.freeze_panes='A11'
                 w.calculation=CalcProperties(calcMode='auto',fullCalcOnLoad=True,forceFullCalc=True)
                 w.save(staged)
             finally:w.close()
