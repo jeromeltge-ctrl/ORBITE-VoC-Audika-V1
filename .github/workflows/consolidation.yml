@@ -1,0 +1,52 @@
+name: Consolidation ORBITE - validation sans deploiement
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lot-a:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'consolidation-orbite'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+      ORBITE_DATA_DIR: ${{ runner.temp }}/orbite-validation
+      LOCALAPPDATA: ${{ runner.temp }}/orbite-local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing Python dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Python tests including historical regressions
+        working-directory: backend
+        run: python -m unittest discover -p 'test_*.py' -v
+      - name: Electron preload contracts
+        run: node --test electron/preload.test.cjs
+      - name: Compile Python sidecar
+        run: python -m PyInstaller --noconfirm --clean --onefile --name orbite_backend --paths backend --distpath backend/dist --hidden-import openpyxl --hidden-import nps_analytics --hidden-import question_analytics --hidden-import survey_library --hidden-import ereputation_bridge --hidden-import engine --hidden-import interactive_export backend/orbite_backend.py
+      - name: Existing packaged backend smoke test
+        run: python backend/smoke_sidecar.py backend/dist/orbite_backend.exe
+      - name: Packaged lot A JSON IPC tests
+        working-directory: backend
+        env:
+          ORBITE_TEST_EXECUTABLE: ${{ github.workspace }}/backend/dist/orbite_backend.exe
+        run: python -m unittest test_consolidation_a_ipc -v
+      - name: Install existing UI dependencies
+        run: npm install
+      - name: TypeScript and React production build
+        run: npm run build
+      - name: Package Electron without publishing
+        run: npx electron-builder --win portable --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ORBITE-lot-A-recette-Windows
+          path: release/*.exe
+          if-no-files-found: error
