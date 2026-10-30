@@ -1,26 +1,30 @@
-name: Consolidation ORBITE - validation sans deploiement
+name: Consolidation ORBITE - validation Windows
 
 on:
   push:
     branches:
       - consolidation-orbite
+      - orb-q01-q02-questions-historiques
+
   pull_request:
     branches:
       - main
+      - consolidation-orbite
+
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: consolidation-${{ github.head_ref || github.ref }}
+  group: consolidation-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   lots-a-e:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.head_ref == 'consolidation-orbite'
+    name: Validation ORBITE Windows
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     env:
       PYTHONUTF8: '1'
@@ -29,52 +33,186 @@ jobs:
       LOCALAPPDATA: ${{ github.workspace }}/.orbite-local
 
     steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # ==========================================
+      # 1. RECUPERATION DU DEPOT
+      # ==========================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ==========================================
+      # 2. ENVIRONNEMENT NODE ET PYTHON
+      # ==========================================
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install existing Python dependencies
-        run: python -m pip install -r backend/requirements.txt
+      # ==========================================
+      # 3. DEPENDANCES PYTHON
+      # ==========================================
 
-      - name: Verify original Excel template is present and unchanged
+      - name: Install Python dependencies
+        run: |
+          python -m pip install -r backend/requirements.txt
+          python -m pip install pyinstaller
+
+      # ==========================================
+      # 4. MODELE EXCEL HISTORIQUE
+      # ==========================================
+
+      - name: Verify original Excel template
         run: |
           python -c "from pathlib import Path; import hashlib; b=Path('backend/modele_consolide2.xlsx').read_bytes(); assert hashlib.sha1(b'blob '+str(len(b)).encode()+bytes([0])+b).hexdigest()=='0334213bf1b067c3f439c3b194ddc8e66511f761'"
 
-      - name: Python tests including all historical regressions and template export
-        run: python backend/run_validation.py --output validation/python-results.json
+      # ==========================================
+      # 5. TESTS PYTHON HISTORIQUES
+      # ==========================================
+
+      - name: Python historical regression tests
+        run: |
+          python backend/run_validation.py --output validation/python-results.json
+
+      # ==========================================
+      # 6. TESTS QUESTIONS ADDITIONNELLES
+      # ==========================================
+
+      - name: Verify Q01-Q06 test files
+        if: github.ref_name == 'orb-q01-q02-questions-historiques'
+        shell: pwsh
+        run: |
+          $required = @(
+            "backend/test_orb_q01_q02.py",
+            "backend/test_orb_q03.py",
+            "backend/test_orb_q05.py",
+            "backend/test_orb_q06_bridge.py"
+          )
+
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) {
+              throw "Missing required test file: $file"
+            }
+          }
+
+      - name: Run Q01-Q06 tests
+        if: github.ref_name == 'orb-q01-q02-questions-historiques'
+        working-directory: backend
+        run: |
+          python -m unittest test_orb_q01_q02 test_orb_q03 test_orb_q05 test_orb_q06_bridge -v
+
+      # ==========================================
+      # 7. TESTS ELECTRON
+      # ==========================================
 
       - name: Electron preload contracts
-        run: node --test electron/preload.test.cjs
+        run: |
+          node --test electron/preload.test.cjs
+
+      # ==========================================
+      # 8. COMPILATION BACKEND PYTHON
+      # ==========================================
 
       - name: Compile Python sidecar
+        shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --name orbite_backend --paths backend --distpath backend/dist --hidden-import openpyxl --hidden-import nps_analytics --hidden-import question_analytics --hidden-import survey_library --hidden-import ereputation_bridge --hidden-import engine --hidden-import interactive_export --hidden-import google_view --hidden-import export_guard --hidden-import periods backend/orbite_backend.py
+          $args = @(
+            "-m", "PyInstaller",
+            "--noconfirm",
+            "--clean",
+            "--onefile",
+            "--name", "orbite_backend",
+            "--paths", "backend",
+            "--distpath", "backend/dist",
+            "--hidden-import", "openpyxl",
+            "--hidden-import", "nps_analytics",
+            "--hidden-import", "question_analytics",
+            "--hidden-import", "survey_library",
+            "--hidden-import", "ereputation_bridge",
+            "--hidden-import", "engine",
+            "--hidden-import", "interactive_export",
+            "--hidden-import", "google_view",
+            "--hidden-import", "export_guard",
+            "--hidden-import", "periods"
+          )
 
-      - name: Existing packaged backend smoke test
-        run: python backend/smoke_sidecar.py backend/dist/orbite_backend.exe
+          if (
+            "${{ github.ref_name }}" -eq
+            "orb-q01-q02-questions-historiques"
+          ) {
+            $args += @(
+              "--hidden-import", "orb_q01",
+              "--hidden-import", "orb_q02",
+              "--hidden-import", "orb_q03",
+              "--hidden-import", "orb_q05",
+              "--hidden-import", "orb_q06_bridge",
+              "--hidden-import", "reportlab",
+              "--collect-all", "reportlab"
+            )
+          }
+
+          $args += "backend/orbite_backend.py"
+
+          & python @args
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "PyInstaller compilation failed"
+          }
+
+      # ==========================================
+      # 9. TEST DU BACKEND WINDOWS
+      # ==========================================
+
+      - name: Packaged backend smoke test
+        run: |
+          python backend/smoke_sidecar.py backend/dist/orbite_backend.exe
+
+      # ==========================================
+      # 10. TESTS IPC EXISTANTS
+      # ==========================================
 
       - name: Packaged lots A-E JSON IPC tests
         working-directory: backend
         env:
           ORBITE_TEST_EXECUTABLE: ${{ github.workspace }}/backend/dist/orbite_backend.exe
-        run: python -m unittest test_consolidation_a_ipc test_consolidation_e -v
+        run: |
+          python -m unittest test_consolidation_a_ipc test_consolidation_e -v
 
-      - name: Install existing UI dependencies
-        run: npm install
+      # ==========================================
+      # 11. DEPENDANCES FRONTEND
+      # ==========================================
+
+      - name: Install UI dependencies
+        run: |
+          npm install
+
+      # ==========================================
+      # 12. COMPILATION REACT / TYPESCRIPT
+      # ==========================================
 
       - name: TypeScript and React production build
-        run: npm run build
+        run: |
+          npm run build
 
-      - name: Package Electron without publishing
-        run: npx electron-builder --win portable --publish never
+      # ==========================================
+      # 13. GENERATION EXE WINDOWS
+      # ==========================================
 
-      - name: Preserve test results even if a later build fails
+      - name: Package Electron Windows
+        run: |
+          npx electron-builder --win portable --publish never
+
+      # ==========================================
+      # 14. CONSERVATION DES RESULTATS
+      # ==========================================
+
+      - name: Upload validation results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -82,9 +220,13 @@ jobs:
           path: validation/*.json
           if-no-files-found: warn
 
+      # ==========================================
+      # 15. ARCHIVE WINDOWS
+      # ==========================================
+
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
         with:
-          name: ORBITE-lots-A-E-recette-Windows
+          name: ORBITE-recette-Windows
           path: release/*.exe
           if-no-files-found: error
