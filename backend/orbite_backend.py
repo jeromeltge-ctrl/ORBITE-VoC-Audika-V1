@@ -327,9 +327,10 @@ def run(method, p):
 
     if method == "deleteImport":
 
-        return import_deletion.remove(
+        return import_deletion.remove_confirmed(
             d,
-            int(p["id"])
+            p.get("id"),
+            p.get("confirmation")
         )
 
     if method == "legacyImportStatus":
