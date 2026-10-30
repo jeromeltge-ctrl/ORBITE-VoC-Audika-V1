@@ -6,7 +6,9 @@ from pathlib import Path
 from datetime import datetime
 from openpyxl import load_workbook
 from engine import setup,import_ref,import_history,import_uberall,Analysis,months,month
-from interactive_export import build
+from export_guard import build
+import google_view
+from periods import day
 
 FIELDS={
  'referentiel':['Code centre','Nom centre','Région','Secteur'],
@@ -85,42 +87,37 @@ def mapped_rows(path,kind,mapping):
 def import_file(data_dir,params):
  kind=params['kind'];path=params['path'];mapping=params['mapping']
  if kind not in FIELDS:raise ValueError('Type inconnu')
- if not params.get('confirm'):raise ValueError('Validation explicite requise')
+ if params.get('confirm') is not True:raise ValueError('Validation explicite requise')
  if params.get('sha256')!=inspect(path,kind)['sha256']:raise ValueError('Fichier modifié depuis sa prévisualisation')
- resolve_columns(path,kind,mapping) # fail BEFORE backup and any engine mutation
+ resolve_columns(path,kind,mapping)
+ if kind=='uberall':
+  if not params.get('start') or not params.get('end'):raise ValueError('Dates Uberall requises')
+  start=day(params['start']);end=day(params['end'],end=True)
+  if start>end or start.day!=1 or (start.year,start.month)!=(end.year,end.month):raise ValueError('Extraction attendue du 1er jour à une date du même mois')
  base=Path(data_dir);base.mkdir(parents=True,exist_ok=True);c=connect(base)
- # Backup BEFORE writing. The historical engine is intentionally unchanged.
  backup=base/('google-backup-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.sqlite')
  try:
   c.commit();snapshot=sqlite3.connect(backup)
-  try:c.backup(snapshot)
+  try:
+   c.backup(snapshot)
+   if snapshot.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise ValueError('Sauvegarde Google invalide')
   finally:snapshot.close()
   records=mapped_rows(path,kind,mapping)
-  if kind=='referentiel':result=import_ref(c,records)
-  elif kind=='historique':result=import_history(c,records)
-  else:
-   if not params.get('start') or not params.get('end'):raise ValueError('Dates Uberall requises')
-   result=import_uberall(c,records,params['start'],params['end'],bool(params.get('replace',False)))
+  try:
+   if kind=='referentiel':result=import_ref(c,records)
+   elif kind=='historique':result=import_history(c,records)
+   else:result=import_uberall(c,records,start.strftime('%d/%m/%Y'),end.strftime('%d/%m/%Y'),params.get('replace') is True)
+  finally:records.close()
   return {'result':result,'backup':str(backup),'kind':kind}
  finally:c.close()
 
 def summary(data_dir,params):
- c=connect(data_dir)
- try:
-  a=Analysis(c)
-  if not a.centers or not a.snap:return {'available':False,'message':'Importer référentiel et historique Google'}
-  period=months(params.get('start') or '2026-01',params.get('end') or '2026-10')
-  reg=params.get('region') or 'Toutes';sector=params.get('sector') or 'Tous'
-  if reg=='':reg='Toutes'
-  if sector=='':sector='Tous'
-  codes=a.codes(reg,sector);stats=a.stats(period,codes)
-  regions=sorted({x[2] for x in a.centers.values()});sectors=sorted({x[3] for x in a.centers.values() if reg=='Toutes' or x[2]==reg})
-  return {'available':True,**stats,'regions':[{'name':r,**a.stats(period,a.codes(r))} for r in regions], 'sectors':[{'name':s,**a.stats(period,a.codes(reg,s))} for s in sectors],'period':period,'source':'engine.py historique'}
- finally:c.close()
+ return google_view.summary(data_dir,params)
 
 def export(data_dir,params,template):
  if not params.get('path'):raise ValueError('Chemin export requis')
- c=connect(data_dir)
+ if not (Path(data_dir)/'google.sqlite').is_file():raise ValueError('Données Google indisponibles')
+ c=google_view.connection(data_dir)
  try:
-  return build(c,template,params['path'],month(params['start']),month(params['end']),params.get('region') or 'Toutes',params.get('sector') or 'Tous')
+  return build(c,template,params['path'],params.get('start') or '',params.get('end') or '',params.get('region') or 'Toutes',params.get('sector') or 'Tous')
  finally:c.close()
