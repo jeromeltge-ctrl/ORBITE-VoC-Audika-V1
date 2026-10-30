@@ -10,7 +10,7 @@ class Contracts(unittest.TestCase):
     c=d.db();c.execute("INSERT INTO centres VALUES('C1','Centre Rhône','NORD/EST','Alsace')")
     q=json.dumps([json.dumps({'question':'Accueil ?','answer':['Très bien']},ensure_ascii=False),'9',None,None,None],ensure_ascii=False)
     rows=[('1','MAIL','Avec Prescription','C1','NORD/EST',10,'Très bien','2026-06-15','2026-06-01',q,'import.xlsx'),('2','SMS','Sans prescription','C1','NORD/EST',6,'À revoir','2026-06-16','2026-06-01',json.dumps([None]*5),'import.xlsx'),('3','MAIL','Avec Prescription','C1','NORD/EST',None,'','', '2026-06-01',json.dumps([None]*5),'import.xlsx')]
-    c.executemany('INSERT INTO nps VALUES(?,?,?,?,?,?,?,?,?,?,?)',rows);c.commit();c.close()
+    c.executemany('INSERT INTO nps(member_id,campaign,appt_type,clinic,region,score,comment,rating_date,send_date,answers,raw_source) VALUES(?,?,?,?,?,?,?,?,?,?,?)',rows);c.commit();c.close()
     requests=[{'id':1,'method':'health','params':{}},{'id':2,'method':'npsDashboard','params':{'region':'NORD/EST','sector':'Alsace'}},{'id':3,'method':'questionAnalysis','params':{'region':'NORD/EST','sector':'Alsace'}},{'id':4,'method':'filters','params':{}}]
     p=subprocess.run([sys.executable,str(Path(__file__).parent/'orbite_backend.py')],input='\n'.join(json.dumps(r) for r in requests)+'\n',text=True,encoding='utf-8',capture_output=True,env=env,timeout=30)
     self.assertEqual(p.returncode,0,p.stderr)

@@ -63,8 +63,17 @@ def _item(c, row):
     return item
 
 
+def remove_confirmed(data_module, import_id, confirmation):
+    """RPC boundary: never truncate a float or accept a boolean as a batch ID."""
+    if type(import_id) is not int or not 0 < import_id <= 9007199254740991:
+        raise ValueError('Identifiant import invalide')
+    if confirmation != f'SUPPRIMER IMPORT NPS {import_id}':
+        raise ValueError('Confirmation explicite de suppression requise')
+    return remove(data_module, import_id)
+
+
 def remove(data_module, import_id):
-    """Internal API; interactive confirmation is enforced by the Electron bridge."""
+    """Internal API retained for existing callers; RPC uses remove_confirmed."""
     if isinstance(import_id, bool) or not isinstance(import_id, (int, str)):
         raise ValueError('Identifiant import invalide')
     if isinstance(import_id, str) and (not import_id.isascii() or not import_id.isdecimal()):
