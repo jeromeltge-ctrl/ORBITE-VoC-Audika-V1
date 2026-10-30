@@ -18,8 +18,8 @@ jobs:
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
-      ORBITE_DATA_DIR: ${{ runner.temp }}/orbite-validation
-      LOCALAPPDATA: ${{ runner.temp }}/orbite-local
+ORBITE_DATA_DIR: ${{ github.workspace }}/.orbite-validation
+LOCALAPPDATA: ${{ github.workspace }}/.orbite-local
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
