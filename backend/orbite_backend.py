@@ -45,6 +45,7 @@ import network_analytics as net
 
 import ereputation_bridge as er
 import shared_reference
+import google_view
 
 import import_deletion
 import google_deletion
@@ -103,144 +104,8 @@ def safe(r):
 # =====================================================
 
 def overview_google(params):
-
-    """
-    Lecture des KPI Google depuis le moteur
-    historique Audika.
-
-    Les règles métier de Analysis.stats()
-    ne sont pas modifiées.
-    """
-
-    path = root / "google.sqlite"
-
-    if not path.is_file():
-
-        return {
-            "google_available": False
-        }
-
-    c = er.connect(root)
-
-    try:
-
-        analysis = Analysis(c)
-
-        if not analysis.centers or not analysis.snap:
-
-            return {
-                "google_available": False
-            }
-
-        latest = c.execute(
-            """
-            SELECT MAX(mois)
-            FROM (
-                SELECT mois FROM historique
-                UNION ALL
-                SELECT mois FROM uberall
-            )
-            """
-        ).fetchone()[0]
-
-        if not latest:
-
-            return {
-                "google_available": False
-            }
-
-        start = (
-            params.get("start")
-            or latest[:4] + "-01"
-        )[:7]
-
-        end = (
-            params.get("end")
-            or latest
-        )[:7]
-
-        period = months(
-            start,
-            end
-        )
-
-        codes = analysis.codes(
-            params.get("region") or "Toutes",
-            params.get("sector") or "Tous"
-        )
-
-        stats = analysis.stats(
-            period,
-            codes
-        )
-
-        prior_period = [
-            yearback(m)
-            for m in period
-        ]
-
-        prior = analysis.stats(
-            prior_period,
-            codes
-        )
-
-        note_delta = None
-
-        if (
-            stats["note"] is not None
-            and prior["note"] is not None
-        ):
-
-            note_delta = (
-                stats["note"]
-                - prior["note"]
-            )
-
-        productivity_n1 = None
-
-        if codes and period:
-
-            productivity_n1 = (
-                stats["n1"]
-                / len(codes)
-                / len(period)
-            )
-
-        return {
-
-            "google_available": True,
-
-            "google_note": stats["note"],
-
-            "google_reviews": stats["n"],
-
-            "google_reviews_n1": stats["n1"],
-
-            "google_reviews_evolution":
-                stats["evolution"],
-
-            "google_reviews_per_center_month":
-                stats["moyenne"],
-
-            "google_reviews_per_center_month_n1":
-                productivity_n1,
-
-            "google_note_delta":
-                note_delta,
-
-            "google_centres":
-                stats["centres"],
-
-            "google_period_start":
-                start,
-
-            "google_period_end":
-                end
-        }
-
-    finally:
-
-        c.close()
+    """Same read-only adapter and period as the dedicated Google dashboard."""
+    return google_view.overview(root, params)
 
 
 # =====================================================
@@ -262,16 +127,9 @@ def run(method, p):
 
     if method == "googleImport":
 
-        if p.get("kind") in (
-            "historique",
-            "uberall"
-        ):
-
-            shared_reference.synchronize(
-                root,
-                d
-            )
-
+        # A Google-only installation must not require an NPS reference.
+        # Synchronisation remains an explicit operation (syncGoogleReference),
+        # never a mutation preceding validation of the selected Google file.
         return er.import_file(
             root,
             p
@@ -410,7 +268,7 @@ def run(method, p):
 
     # =================================================
     # PUBLICATION / RESTAURATION
-    # =================================================
+    # =====================================================
 
     if method == "publish":
 
@@ -517,46 +375,12 @@ def run(method, p):
 
         if method == "filters":
 
+            centres = [dict(x) for x in c.execute(
+                "SELECT code,name,region,sector FROM centres ORDER BY name"
+            )]
             return {
-
-                "regions": [
-                    x[0]
-                    for x in c.execute(
-                        """
-                        SELECT DISTINCT region
-                        FROM centres
-                        WHERE region<>''
-                        ORDER BY region
-                        """
-                    )
-                ],
-
-                "sectors": [
-                    {
-                        "name": x[0],
-                        "region": x[1]
-                    }
-                    for x in c.execute(
-                        """
-                        SELECT DISTINCT sector,region
-                        FROM centres
-                        WHERE sector<>''
-                        ORDER BY sector
-                        """
-                    )
-                ],
-
-                "centres": [
-                    dict(x)
-                    for x in c.execute(
-                        """
-                        SELECT code,name,region,sector
-                        FROM centres
-                        ORDER BY name
-                        """
-                    )
-                ],
-
+                **google_view.filter_options(root, centres),
+                "centres": centres,
                 "campaigns": [
                     x[0]
                     for x in c.execute(
@@ -710,7 +534,7 @@ def run(method, p):
 
                 dt = (
                     r["rating_date"]
-                    if r["score"] is not None
+                    if npsa.valid_score(r["score"]) is not None
                     else ""
                 )[:7]
 
