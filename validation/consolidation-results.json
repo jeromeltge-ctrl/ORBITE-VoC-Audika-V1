@@ -1,0 +1,23 @@
+{
+  "at": "2026-10-30T10:11:01.155760+00:00",
+  "source_commit": "34396d145d22ba717ed9c6ff7bdc8bd4b6e23d2a",
+  "environment": "Linux, temporary synthetic databases; GitHub source blobs verified",
+  "python": "3.12.15 (main, Oct 25 2026, 23:53:29) [GCC 13.2.0]",
+  "tests_run": 56,
+  "passed": 54,
+  "failures": 0,
+  "errors": 0,
+  "skipped": [
+    {"test": "test_real_historical_template_when_present (test_consolidation_d.ExportTests.test_real_historical_template_when_present)", "reason": "Modèle historique non disponible dans cette copie locale"},
+    {"test": "test_real_data_when_available (test_google_fusion.FusionTests.test_real_data_when_available)", "reason": "Fichiers métier non distribués dans GitHub"}
+  ],
+  "preload_contract_tests": {"tests": 6, "passed": 6, "failed": 0, "uses_ipc_doubles": true},
+  "actual_python_sidecar_scenarios_executed": true,
+  "typescript_build": "NOT_EXECUTED: npm absent; restoration from registry returned HTTP 403",
+  "windows_build": "NOT_EXECUTED",
+  "packaged_sidecar": "NOT_EXECUTED",
+  "graphical_acceptance": "NOT_EXECUTED",
+  "excel_historical_template_acceptance": "NOT_EXECUTED: authorized download returned HTTP 403",
+  "excel_formula_recalculation": "NOT_EXECUTED",
+  "release_ready": false
+}
