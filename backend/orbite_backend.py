@@ -7,6 +7,7 @@ import traceback
 
 from pathlib import Path
 
+
 # =====================================================
 # 1. ENCODAGE UTF-8 ELECTRON / PYTHON
 # =====================================================
@@ -105,8 +106,15 @@ def safe(r):
 # =====================================================
 
 def overview_google(params):
-    """Same read-only adapter and period as the dedicated Google dashboard."""
-    return google_view.overview(root, params)
+    """
+    Same read-only adapter and period as the
+    dedicated Google dashboard.
+    """
+
+    return google_view.overview(
+        root,
+        params
+    )
 
 
 # =====================================================
@@ -114,15 +122,34 @@ def overview_google(params):
 # =====================================================
 
 def run(method, p):
-    # ORB-Q06: additive question-analysis routes; preserve A-E and Google handlers.
+
+    # =================================================
+    # QUESTIONS ADDITIONNELLES - Q01 A Q06 / V2
+    # =================================================
+
     if method in {
-        "qaHistoricalCatalog", "qaQuickResult", "qaDashboardSave",
-        "qaDashboardList", "qaDashboardLoad", "qaDashboardDuplicate",
-        "qaDashboardDelete", "qaStatistics", "qaExport"
+        "qaHistoricalCatalog",
+        "qaFilterOptions",
+        "qaQuickResult",
+        "qaDashboardSave",
+        "qaDashboardList",
+        "qaDashboardLoad",
+        "qaDashboardDuplicate",
+        "qaDashboardDelete",
+        "qaStatistics",
+        "qaExport",
+        "qaDashboardExport"
     }:
+
         c = d.db()
+
         try:
-            return q06.handle(c, method, p)
+            return q06.handle(
+                c,
+                method,
+                p
+            )
+
         finally:
             c.close()
 
@@ -139,9 +166,6 @@ def run(method, p):
 
     if method == "googleImport":
 
-        # A Google-only installation must not require an NPS reference.
-        # Synchronisation remains an explicit operation (syncGoogleReference),
-        # never a mutation preceding validation of the selected Google file.
         return er.import_file(
             root,
             p
@@ -173,7 +197,7 @@ def run(method, p):
         )
 
     # =================================================
-    # E-REPUTATION - GESTION DES SUPPRESSIONS
+    # E-REPUTATION - SUPPRESSIONS
     # =================================================
 
     if method == "googleDeleteInventory":
@@ -192,7 +216,7 @@ def run(method, p):
         )
 
     # =================================================
-    # NPS - GESTION DES SUPPRESSIONS
+    # NPS - SUPPRESSIONS
     # =================================================
 
     if method == "deleteImport":
@@ -227,16 +251,13 @@ def run(method, p):
         try:
 
             return {
-
                 "status": "ok",
-
                 "nps_rows": c.execute(
                     "SELECT COUNT(*) FROM nps"
                 ).fetchone()[0]
             }
 
         finally:
-
             c.close()
 
     # =================================================
@@ -255,9 +276,7 @@ def run(method, p):
         )
 
         return {
-
             "centres": count,
-
             "google_reference": sync
         }
 
@@ -280,7 +299,7 @@ def run(method, p):
 
     # =================================================
     # PUBLICATION / RESTAURATION
-    # =====================================================
+    # =================================================
 
     if method == "publish":
 
@@ -351,14 +370,11 @@ def run(method, p):
                         exported += 1
 
             return {
-
                 "exported": exported,
-
                 "path": p["path"]
             }
 
         finally:
-
             c.close()
 
     # =================================================
@@ -387,11 +403,22 @@ def run(method, p):
 
         if method == "filters":
 
-            centres = [dict(x) for x in c.execute(
-                "SELECT code,name,region,sector FROM centres ORDER BY name"
-            )]
+            centres = [
+                dict(x)
+                for x in c.execute(
+                    """
+                    SELECT code, name, region, sector
+                    FROM centres
+                    ORDER BY name
+                    """
+                )
+            ]
+
             return {
-                **google_view.filter_options(root, centres),
+                **google_view.filter_options(
+                    root,
+                    centres
+                ),
                 "centres": centres,
                 "campaigns": [
                     x[0]
@@ -399,7 +426,7 @@ def run(method, p):
                         """
                         SELECT DISTINCT appt_type
                         FROM nps
-                        WHERE appt_type<>''
+                        WHERE appt_type <> ''
                         ORDER BY appt_type
                         """
                     )
@@ -434,7 +461,7 @@ def run(method, p):
             )
 
         # =============================================
-        # QUESTIONS ADDITIONNELLES
+        # QUESTIONS ADDITIONNELLES HISTORIQUES
         # =============================================
 
         if method == "questionAnalysis":
@@ -451,8 +478,7 @@ def run(method, p):
                 for x in qa.analyze(
                     records(c, p)
                 )
-                if x["wording"]
-                == p.get("wording")
+                if x["wording"] == p.get("wording")
             ]
 
         if method == "questionProfile":
@@ -488,8 +514,8 @@ def run(method, p):
                 """
                 SELECT COUNT(*)
                 FROM centres
-                WHERE (?="" OR region=?)
-                AND (?="" OR sector=?)
+                WHERE (? = "" OR region = ?)
+                AND (? = "" OR sector = ?)
                 """,
                 (
                     p.get("region", ""),
@@ -524,7 +550,6 @@ def run(method, p):
             return [
                 {
                     "name": name,
-
                     **d.metrics([
                         r
                         for r in rows
@@ -560,7 +585,6 @@ def run(method, p):
             return [
                 {
                     "month": key,
-
                     **d.metrics(
                         grouped[key]
                     )
@@ -588,32 +612,25 @@ def run(method, p):
 
             rows.sort(
                 key=lambda r:
-                    r["rating_date"]
-                    or r["send_date"],
+                    r["rating_date"] or r["send_date"],
                 reverse=True
             )
 
             offset = max(
                 0,
-                int(
-                    p.get("offset") or 0
-                )
+                int(p.get("offset") or 0)
             )
 
             limit = min(
                 200,
                 max(
                     1,
-                    int(
-                        p.get("limit") or 30
-                    )
+                    int(p.get("limit") or 30)
                 )
             )
 
             return {
-
                 "total": len(rows),
-
                 "items": [
                     safe(x)
                     for x in rows[
@@ -652,25 +669,14 @@ def run(method, p):
 
             return lib.list_surveys(
                 c,
-
-                search=p.get(
-                    "search",
-                    ""
-                ),
-
-                campaign=p.get(
-                    "campaign"
-                ) or None,
-
+                search=p.get("search", ""),
+                campaign=p.get("campaign") or None,
                 year=(
                     int(p["year"])
                     if p.get("year")
                     else None
                 ),
-
-                status=p.get(
-                    "status"
-                ) or None
+                status=p.get("status") or None
             )
 
         if method == "surveyDetail":
@@ -703,15 +709,11 @@ def run(method, p):
                 p.get("year"),
                 p.get("start"),
                 p.get("end"),
-
                 status=p.get(
                     "status",
                     "preparation"
                 ),
-
-                source=p.get(
-                    "source"
-                )
+                source=p.get("source")
             )
 
             ids = []
@@ -734,9 +736,7 @@ def run(method, p):
             )
 
             return {
-
                 "survey": sid,
-
                 "version": vid
             }
 
@@ -759,7 +759,6 @@ def run(method, p):
         )
 
     finally:
-
         c.close()
 
 
@@ -785,22 +784,18 @@ if __name__ == "__main__":
             )
 
             response = {
-
                 "id": req.get("id"),
-
                 "data": data
             }
 
         except Exception as e:
 
             response = {
-
                 "id": (
                     req.get("id")
                     if isinstance(req, dict)
                     else None
                 ),
-
                 "error": str(e)
             }
 
